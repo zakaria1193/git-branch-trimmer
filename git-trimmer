@@ -1,0 +1,64 @@
+#!/bin/bash
+
+timmer_editor='"$MY_SCRIPTS/my_lib/git-trimmer-editor.sh"'
+
+usage() {
+    cat <<_EOF_
+NAME
+    trims unwanted commits
+
+SYNOPSIS
+    -f  pushes force the trimmed branch to name of current branch
+    -p  pushes the trimmed branch to name of current branch
+
+    trimmer-branch can be used as wished after the script (even without options)
+
+_EOF_
+    exit
+}
+
+function main
+{
+local push_force=
+local push_soft=
+local current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+while getopts ":fph" OPT ; do
+  case "${OPT}" in
+    f)       push_force='yes' ;;
+    p)       push_soft='yes'  ;;
+    h)       usage;;
+    \?) printf "Error: unknown option '%s'\n" "${OPTARG}" >&2; usage; exit ;;
+    :) echo "Option -${OPTARG} requires an argument." >&2; usage; exit ;;
+  esac
+done
+
+# trimmer-branch goes to head
+git branch -f trimmer-branch HEAD
+git checkout trimmer-branch
+
+# get branch root
+rootbranch=$(git merge-base master trimmer-branch)
+GIT_SEQUENCE_EDITOR=${timmer_editor} git rebase -i ${rootbranch}
+git checkout -
+
+# show result to user
+git log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' -13 --abbrev-commit trimmer-branch
+
+if [[ -n $push_soft ]]
+  then
+  git push origin trimmer-branch:$current_branch
+elif [[ -n $push_force ]]
+  then
+  git push -f origin trimmer-branch:$current_branch
+else
+  echo -e "\n \n \n"
+  read -p "Wanna push force? " -n 1 -r; echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      git push origin -f trimmer-branch:$current_branch
+    fi
+fi
+}
+
+# run main
+main "$@"  2>&1
